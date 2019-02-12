@@ -120,8 +120,9 @@ ggplot(data= diamonds, mapping = aes(x = price, y = carat)) +
 
 ##  Exercise 3
 ```{r}
-#
+#added some text in lab 3
 ```
+
 Based on the distribution above, there is much more variation in larger diamonds rather than smaller diamonds. This makes a lot of sense, as large diamonds can cost a lot even if their other characteristics are not very good as opposed to smaller diamonds with better characteristics. 
 
 ##  Exercise 5
