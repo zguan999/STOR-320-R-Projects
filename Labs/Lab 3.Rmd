@@ -1,6 +1,6 @@
 ---
 title: "Lab 3"
-author: "FIRSTNAME LASTNAME"
+author: "Zachary Guan"
 date: "`r format(Sys.time(), '%B %d, %Y')`"
 output: html_document
 ---
@@ -42,7 +42,6 @@ the highest peak for x(length) is ~4 mm with smaller peaks from the range of ~4-
 ##  Exercise 3
 ```{r}
 #
-
 diamonds %>% 
   filter(carat %in% c(.99,1)) %>%
   count(carat) 
@@ -111,7 +110,6 @@ There are too many destinations and there is alot of white space created by NA v
 
 ##  Exercise 2
 ```{r}
-# akash is a scrub
 
 ggplot(data= diamonds, mapping = aes(x = price, y = carat)) +
   geom_boxplot(mapping = aes(group = cut_number(price, 20))) + 
@@ -120,7 +118,7 @@ ggplot(data= diamonds, mapping = aes(x = price, y = carat)) +
 
 ##  Exercise 3
 ```{r}
-#added some text in lab 3
+
 ```
 
 Based on the distribution above, there is much more variation in larger diamonds rather than smaller diamonds. This makes a lot of sense, as large diamonds can cost a lot even if their other characteristics are not very good as opposed to smaller diamonds with better characteristics. 
