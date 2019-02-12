@@ -1,0 +1,190 @@
+---
+title: "Lab 2"
+author: "Zachary Guan"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output: html_document
+---
+
+```{r setup, include=TRUE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Instructions
+
+**Exercises:**  1-3 (Pgs. 49-50); 2-4 (Pg. 51); 2,4 (Pg. 54); 1-4 (Pg. 58)
+
+**Assigned:** Friday, January 18, 2019
+
+**Due:** Friday, January 25, 2019 by 5:00 PM
+
+**Submission:** Submit via an electronic document on Sakai. Must be submitted as a html file generated in RStudio. All assigned problems are chosen according to the textbook *R for Data Science*. 
+
+```{r, include=TRUE}
+library(tidyverse)
+library(ggplot2)
+library(nycflights13)
+```
+
+# Chapter 3 (Pgs. 49-50)
+
+##  Exercise 1
+```{r}
+#a.
+two_hrs <- filter(flights, arr_delay >= 120)
+head(two_hrs)
+
+#b.
+iah_hou <- filter(flights, dest %in% c("IAH", "HOU"))
+head(iah_hou)
+
+#c.
+uad <- filter(flights, carrier %in% c("AA", "UA", "DL"))
+head(uad)
+
+#d.
+summer <- filter(flights, between(month,7,9))
+head(summer)
+
+#e.
+dl <- filter(flights, arr_delay > 120, dep_delay <=0)
+head(dl)
+
+#f. 
+dthirty <-filter(flights, dep_delay >= 60, dep_delay - arr_delay >= 30)
+
+head(dthirty)
+
+#g.
+midnight <- filter(flights,dep_time == 2400|dep_time <=600)
+head(midnight)
+
+```
+
+##  Exercise 2
+```{r}
+#
+
+use_btwn <- filter(flights, between(month, 7,9))
+
+head(use_btwn)
+
+```
+the between() function will choose variables that fall in the specified range. I used this for the question regarding flights that departed in summer, since that is a range.
+
+
+##  Exercise 3
+```{r}
+#
+missing<- filter(flights, is.na(dep_time))
+nrow(missing)
+```
+There are 8255 missing departure times
+
+
+# Chapter 3 (Pg. 51)
+
+##  Exercise 2
+```{r}
+#
+sflight <- arrange(flights, desc(dep_delay))
+
+fflight <- arrange(flights, dep_delay)
+
+head(sflight)
+head(fflight)
+```
+The fastest departure time was -43 minutes(43 minutes earlier departure) on B6 flight 97 going from JFK to DEN. The slowest was 1301 minutes on HA flight 51 from JFK to HNL. 
+
+
+
+##  Exercise 3
+```{r}
+#
+fast <- arrange(flights, air_time)
+head(fast)
+```
+the shortest air time was 20 minutes, being EV flight 4368 form EWR to BDL
+
+
+##  Exercise 4
+```{r}
+#
+longest <- arrange(flights, desc(distance))
+shortest <- arrange(flights, distance)
+head(longest)
+head(shortest)
+```
+The flight that traveled the longest distance was HA flight 51 from JFK to HNL. The shortest was US flight 1632 from EWR to LGA. 
+
+
+
+# Chapter 3 (Pg. 54)
+
+##  Exercise 2
+```{r}
+#
+test <-select(flights, flight, flight, flight)
+head(test)
+```
+the duplicate variables are not generated in the dataframe when used multiple times in the select() function. 
+
+
+
+##  Exercise 4
+```{r}
+#
+time <-select(flights, contains("TIME"))
+head(time)
+```
+this doesn't surprise me because all columns that mentioned time were selected. Select ignored the case for TIME, which means select is not case sensitive, it just looks for the characters. Not surprising in my opinion. 
+
+# Chapter 3 (Pg. 58)
+
+##  Exercise 1
+```{r}
+#
+
+f2a<-mutate(flights, dep_mins=dep_time%/%100*60 +(dep_time%%100)%%1400, sched_dep_min = (sched_dep_time %/% 100 *60 + sched_dep_time %% 100) %% 1400)
+f2a_select <-select(f2a, sched_dep_time, sched_dep_min, dep_time,dep_mins)
+
+head(f2a_select)
+```
+
+##  Exercise 2
+```{r}
+#
+f2<-mutate(flights, arr_time_mins = arr_time%/%100*60 +(arr_time%%100)%%1400, dep_time_mins= dep_time%/%100*60+(dep_time%%100)%%1400, diff_air = arr_time - dep_time)
+
+
+
+data <-select(f2,diff_air,air_time)
+
+head(data)
+```
+I expected the times to be fairly similar, but instead the air time is usually less than the difference between arrival times and depature times. When going across the world, times zones change, so the large differences are usually caused by that. To fix this, remove the difference cause by time zone changes. 
+
+
+
+##  Exercise 3
+```{r}
+# 
+deptime <- mutate(flights, diff_dept_sched = dep_time - sched_dep_time)
+dept <-select(deptime, dep_delay, diff_dept_sched)
+head(dept)
+```
+departure delay is most likely the difference between dep_time and sched_dep_time. 
+
+
+##  Exercise 4
+```{r}
+#
+delayed_flight <- mutate(flights, delay_rnked = min_rank(desc(dep_delay)))
+
+filtered <- filter(delayed_flight, delay_rnked <= 10)
+final <-arrange(filtered, delay_rnked)
+head(final)
+```
+
+
+To handle ties, I would assign the largest of the ties to be the place that all of the other ties would be, so if the largest delay was 8th place, every other tie would be 8th as well. 
+
