@@ -791,6 +791,7 @@ table(crime[,c("Victim Descent","Predict")])
 sum(crime$'Victim Descent'=="1")
 sum(crime$Predict=="W")
 
+save.image()
 ```
 
 
