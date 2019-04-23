@@ -1,0 +1,878 @@
+---
+title: "Exploratory Data Analysis"
+author: "STOR 320.01 Group 12 "
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+
+# Import Data Below
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(RColorBrewer)
+library(kableExtra)
+library(readr)
+library(modelr)       #Helpful Functions in Modeling
+library(rvest)
+library(readr)
+library(maptools)
+library(rgdal)
+library(raster)
+library(data.table)
+library(glmnet)
+#census<-read.csv("C:/Users/nehak/OneDrive/Documents/SCHOOL/senior/Spring19/STOR 320/Final Project/320FinalProject/census data.csv", header = T)
+FullData <- read_csv("./FullData.csv")
+fulldata<-read_csv("./full_data.csv") %>% rename('Crime.Code'='Crime Code', 'Crime.Code.Description'='Crime Code Description','Date.Occurred'='Date Occurred', 'Victim.Age'='Victim Age', 'Victim.Sex'='Victim Sex','Premise.Code'='Premise Code', 'Presmise.Description'='Premise Description', 'Weapon.Used.Code'= 'Weapon Used Code', 'Weapon.Description'='Weapon Description', 'Male.pop'='Male pop', 'Female.pop'='Female pop', 'No.HS'='No HS', 'HS.equiv' = 'HS equiv', 'Assoc.some.college'='Assoc/some college', 'Graduate.Prof.degree'='Graduate/Prof degree', 'own.house'='own house', 'rented.house'='rented house', 'vacant.house'='vacant house')
+tract_la<- read_csv("./tract_la.csv")
+census<-read_csv("./census_data.csv")
+la.crime<-left_join(FullData,lac,by=c('Lat','Lon','Date Occurred','Victim Age','Victim Sex','Weapon Description','Weapon Used Code','Premise Code','Premise Description'))
+la.crime<-sample_n(la.crime, 40000)
+colpalbg<-colorRampPalette(brewer.pal(9,"GnBu"))(100)
+colblues<-brewer.pal(3, "Blues")
+```
+
+#Creator: Joshua Shrestha
+
+###Q1: Do tracts with higher educational attainment have lower crime?
+
+```{r, echo = FALSE, warning= FALSE}
+education <- FullData %>% dplyr::select(-'X1.x', -'Date Occurred', -'Victim Age', -'Victim Sex', -'Lat', -'Lon', -'X1.y', -'employed', -'medincome', -'own house', -'rented house', -'vacant house')
+
+tract.grouped <- education %>% count(tract)
+
+education.grouped <- education %>%
+
+  dplyr::select('tract', 'No HS', 'HS equiv', 'Assoc/some college', 'Bachelors', 'Graduate/Prof degree') %>%
+
+  distinct()
+
+grouped.join <- na.omit(left_join(tract.grouped, education.grouped, by = 'tract'))
+
+#Remove outliers
+
+outliers <- boxplot(grouped.join$n, plot=F)$out
+
+grouped.join <- grouped.join[-which(grouped.join$n %in% outliers),]
+
+top6.nohs <- top_n(grouped.join, 10, grouped.join$`No HS`) %>% dplyr::select(n)
+
+top6.nohs$category <- "no_hs" 
+
+top6.hs <- top_n(grouped.join, 10, grouped.join$`HS equiv`) %>% dplyr::select(n)
+
+top6.hs$category <- "hs" 
+
+top6.asoc <- top_n(grouped.join, 10, grouped.join$`Assoc/some college`) %>% dplyr::select(n)
+
+top6.asoc$category <- "asoc" 
+
+top6.bach <- top_n(grouped.join, 10, grouped.join$Bachelors) %>% dplyr::select(n)
+
+top6.bach$category <- "bach" 
+
+top6.grad <- top_n(grouped.join, 10, grouped.join$`Graduate/Prof degree`) %>% dplyr::select(n)
+
+top6.grad$category <- "grad" 
+
+top6.tot <- rbind(top6.grad,top6.hs,top6.asoc,top6.bach,top6.nohs)
+
+top6.tot$category <- factor(top6.tot$category)
+
+ggplot(top6.tot, aes(category, n, fill=category)) +
+
+  geom_boxplot() +
+
+  labs(x="Educational group", y="Crime count per tract", title="Crime statistics for top 10 tracts per educational group") +
+
+  scale_x_discrete(labels = c('Associate/Some college', 'Bachelors','Graduate/Prof degree','High School equivalent', 'No high school')) +
+
+  theme(plot.title = element_text(hjust=0.5), axis.text.x = element_text(angle = 45, hjust = 1)) + 
+
+  scale_fill_discrete(name = "Category")
+
+  
+
+ggplot(top6.tot, aes(category, n, fill=category)) +
+
+  geom_bar(stat="identity") +
+
+  labs(x="Educational group", y="Crime count per tract", title="Crime count for top 10 tracts per educational group") +
+
+  scale_x_discrete(labels = c('Associate/Some college', 'Bachelors','Graduate/Prof degree','High School equivalent', 'No high school')) +
+
+  theme(plot.title = element_text(hjust=0.5), axis.text.x = element_text(angle = 45, hjust = 1)) + 
+
+  scale_fill_discrete(name = "Category")
+
+```
+
+###Q2: Are there months with crime spikes?
+
+```{r, echo = FALSE, warning=FALSE}
+crime <- FullData %>%
+
+  dplyr::select('Date Occurred', 'Crime Code Description')
+
+names(crime) <- c("date", "crime_description")
+
+crime.grouped <- crime %>% count(crime_description)
+
+crime.grouped.sort <- crime.grouped[order(-crime.grouped$n),]
+
+top10crimes <- head(crime.grouped.sort, n=10)
+
+ggplot(top10crimes,
+
+       aes(x=crime_description, y=n)) +
+
+  geom_bar(stat='identity') +
+
+  coord_flip() +
+
+  labs(y="Count of individual crimes", 
+
+     x="Top 10 crime descriptions", 
+
+     title="Top 10 crime descriptions and counts")
+
+date.grouped <- crime %>% 
+
+  group_by(date, crime_description) %>% 
+
+  count(crime_description)
+
+date.grouped$crime_description <- factor(date.grouped$crime_description)
+
+date.grouped.filter <- na.omit(date.grouped) %>%
+
+  filter(crime_description=='VEHICLE - STOLEN' || crime_description=="BURGLARY FROM VEHICLE" || 
+
+           crime_description == "THEFT PLAIN - PETTY ($950 & UNDER)"  || crime_description == "BATTERY - SIMPLE ASSAULT" ||
+
+           crime_description == "INTIMATE PARTNER - SIMPLE ASSAULT" || crime_description=="ASSAULT WITH DEADLY WEAPON, AGGRAVATED ASSAULT"||
+
+          crime_description=="BURGLARY" || crime_description=="VANDALISM - FELONY ($400 & OVER, ALL CHURCH VANDALISMS)"||
+
+           crime_description=="THEFT OF IDENTITY" || crime_description=="THEFT FROM MOTOR VEHICLE - PETTY ($950 & UNDER)")
+
+date.grouped.filter$date <- as.Date(date.grouped.filter$date, '%m/%d/%Y')
+
+date.grouped.jan <- subset(date.grouped.filter, date > "0017-01-01" & date < "0017-01-31")
+
+date.grouped.feb <- subset(date.grouped.filter, date > "0017-02-01" & date < "0017-02-28")
+
+date.grouped.mar <- subset(date.grouped.filter, date > "0017-03-01" & date < "0017-03-31")
+
+date.grouped.apr <- subset(date.grouped.filter, date > "0017-04-01" & date < "0017-04-30")
+
+date.grouped.may <- subset(date.grouped.filter, date > "0017-05-01" & date < "0017-05-31")
+
+date.grouped.jun <- subset(date.grouped.filter, date > "0017-06-01" & date < "0017-06-30")
+
+date.grouped.jul <- subset(date.grouped.filter, date > "0017-07-01" & date < "0017-07-31")
+
+date.grouped.aug <- subset(date.grouped.filter, date > "0017-08-01" & date < "0017-08-31")
+
+date.grouped.sep <- subset(date.grouped.filter, date > "0017-09-01" & date < "0017-09-30")
+
+date.grouped.oct <- subset(date.grouped.filter, date > "0017-10-01" & date < "0017-10-31")
+
+date.grouped.nov <- subset(date.grouped.filter, date > "0017-11-01" & date < "0017-11-30")
+
+date.grouped.dec <- subset(date.grouped.filter, date > "0017-12-01" & date < "0017-12-31")
+
+ggplot(date.grouped.jan,
+
+       aes(x=date, y=n, fill=crime_description)) +
+
+  geom_bar(stat='identity') +
+
+  labs(x="Date",y="Count of crime",title="Time series of 10 top most prevelant crimes for January") +
+
+  scale_fill_discrete(name = "Crime description")+
+
+  ylim(0, 90)
+
+ggplot(date.grouped.feb,
+
+       aes(x=date, y=n, fill=crime_description)) +
+
+  geom_bar(stat='identity') +
+
+  labs(x="Date",y="Count of crime",title="Time series of 10 top most prevelant crimes for February") +
+
+  scale_fill_discrete(name = "Crime description")+
+
+  ylim(0, 90)
+
+ggplot(date.grouped.mar,
+
+       aes(x=date, y=n, fill=crime_description)) +
+
+  geom_bar(stat='identity') +
+
+  labs(x="Date",y="Count of crime",title="Time series of 10 top most prevelant crimes for March") +
+
+  scale_fill_discrete(name = "Crime description")+
+
+  ylim(0, 90)
+
+ggplot(date.grouped.apr,
+
+       aes(x=date, y=n, fill=crime_description)) +
+
+  geom_bar(stat='identity') +
+
+  labs(x="Date",y="Count of crime",title="Time series of 10 top most prevelant crimes for April") +
+
+  scale_fill_discrete(name = "Crime description")+
+
+  ylim(0, 90)
+
+ggplot(date.grouped.may,
+
+       aes(x=date, y=n, fill=crime_description)) +
+
+  geom_bar(stat='identity') +
+
+  labs(x="Date",y="Count of crime",title="Time series of 10 top most prevelant crimes for May") +
+
+  scale_fill_discrete(name = "Crime description")+
+
+  ylim(0, 90)
+
+ggplot(date.grouped.jun,
+
+       aes(x=date, y=n, fill=crime_description)) +
+
+  geom_bar(stat='identity') +
+
+  labs(x="Date",y="Count of crime",title="Time series of 10 top most prevelant crimes for June") +
+
+  scale_fill_discrete(name = "Crime description")+
+
+  ylim(0, 90)
+
+ggplot(date.grouped.jul,
+
+       aes(x=date, y=n, fill=crime_description)) +
+
+  geom_bar(stat='identity') +
+
+  labs(x="Date",y="Count of crime",title="Time series of 10 top most prevelant crimes for July") +
+
+  scale_fill_discrete(name = "Crime description")+
+
+  ylim(0, 90)
+
+ggplot(date.grouped.aug,
+
+       aes(x=date, y=n, fill=crime_description)) +
+
+  geom_bar(stat='identity') +
+
+  labs(x="Date",y="Count of crime",title="Time series of 10 top most prevelant crimes for August") +
+
+  scale_fill_discrete(name = "Crime description")+
+
+  ylim(0, 90)
+
+ggplot(date.grouped.sep,
+
+       aes(x=date, y=n, fill=crime_description)) +
+
+  geom_bar(stat='identity') +
+
+  labs(x="Date",y="Count of crime",title="Time series of 10 top most prevelant crimes for September") +
+
+  scale_fill_discrete(name = "Crime description")+
+
+  ylim(0, 90)
+
+ggplot(date.grouped.oct,
+
+       aes(x=date, y=n, fill=crime_description)) +
+
+  geom_bar(stat='identity') +
+
+  labs(x="Date",y="Count of crime",title="Time series of 10 top most prevelant crimes for October") +
+
+  scale_fill_discrete(name = "Crime description")+
+
+  ylim(0, 90)
+
+ggplot(date.grouped.nov,
+
+       aes(x=date, y=n, fill=crime_description)) +
+
+  geom_bar(stat='identity') +
+
+  labs(x="Date",y="Count of crime",title="Time series of 10 top most prevelant crimes for November") +
+
+  scale_fill_discrete(name = "Crime description")+
+
+  ylim(0, 90)
+
+```
+
+#Interpreter: Zachary Guan
+
+###Q1: Distribution of weapon types throughout the tracts. Are there certain areas with a higher weapon type. 
+
+```{r, echo = FALSE, warning= FALSE}
+state<- readOGR(dsn="/Users/zguan/OneDrive/Documents/STOR 320 R Projects/shapefile" , layer="CENSUS_TRACTS_2010")
+  state.df = fortify(state)
+  
+weapon_type<- FullData %>% group_by(tract, `Weapon Used Code`) %>% drop_na('Weapon Used Code')  %>% summarize( n=n()) %>% ungroup()
+mean(weapon_type$n)
+
+###
+weapon_type_filtered<- weapon_type %>% filter(n,n>=mean(n)) 
+
+
+
+w.desc<- FullData %>% drop_na('Weapon Used Code')  %>% dplyr::select(`Weapon Used Code`, `Weapon Description`) 
+
+highest_weapons <- weapon_type_filtered %>% group_by(`Weapon Used Code`) %>%
+  summarize(Frequency=n()) %>% ungroup()
+
+highest_weapon_description <- left_join(highest_weapons,w.desc,by=c("Weapon Used Code"))
+high.w.descr<-unique(highest_weapon_description)
+
+###
+high.w.descr<-high.w.descr %>% arrange(desc(Frequency))
+
+
+tract_la$Tract<-gsub("[^0-9\\.]", "", tract_la$Tract) 
+tract_lac<-data.frame(tract_la, tract = as.numeric(tract_la$Tract))
+
+
+w_f<- left_join(weapon_type_filtered,tract_lac,by=c("tract"))
+w_f<- w_f %>% dplyr::select(tract, `Weapon Used Code`,n, Latitude,Longitude)
+
+
+
+kable(high.w.descr) %>%
+
+kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),full_width = F,position = "center") 
+
+
+weapon.type.filtered<- weapon_type_filtered %>% rename(Tract=tract, Count=n)
+
+kable(weapon.type.filtered) %>%
+
+kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),full_width = F,position = "center") %>%scroll_box(width = "700px", height = "350px")
+
+
+
+coordinates(w_f)<-~Longitude+Latitude
+proj4string(w_f)<-CRS("+proj=longlat +datum=NAD83")
+w_f<-spTransform(w_f, CRS(proj4string(state)))
+identical(proj4string(w_f),proj4string(state))
+w_f<-data.frame(w_f)
+w_f<-w_f %>% rename(x=Longitude) %>% rename(y=Latitude)
+
+ggplot() +geom_path(data=state.df, aes(x=long, y=lat, group=group),  color= 'grey80')+  geom_point(data=w_f, aes(x=x, y=y,color=Weapon.Used.Code),size = .6) + coord_fixed(ylim = c(1700000,2000000)) + labs(colour= "Weapon Used Codes", title="Most Frequent Weapon Code/Tract", x="Longitude",y="Latitude")
+
+
+
+
+
+
+```
+
+###Q2: Are there certain tracts of LA that have a higher code of a premise call?
+```{r}
+devtools::install_github("dkahle/ggmap")
+
+register_google(key = "AIzaSyDA479ARnRh_TXsullvooh8mUd0lxTvhIc")
+
+ggmap(ggmap = get_map("la county", zoom = 10, scale="auto", maptype = "roadmap", source = "google")) + geom_point(aes(x=Longitude, y = Latitude, size=n, color=factor(`Weapon Used Code`)),data= w_f, alpha = .5) + scale_x_continuous(limits = c(-118.5, -118.1), expand = c(0, 0)) +
+scale_y_continuous(limits = c(33.9, 34.1), expand = c(0, 0))
+
+
+ggmap(ggmap = get_map("la county", zoom = 10, scale="auto", maptype = "roadmap", source = "google")) + geom_point(aes(x=Longitude, y = Latitude, size=n, color=factor(`Weapon Used Code`)),data= w_f, alpha = .5) + scale_x_continuous(limits = c(-118.7, -118.3), expand = c(0, 0)) +
+scale_y_continuous(limits = c(34.1, 34.3), expand = c(0, 0))
+```
+
+```{r, echo = FALSE, warning = FALSE, eval =F}
+
+
+premise<- FullData %>% group_by(tract, `Premise Code`) %>% drop_na(`Premise Code`)  %>% summarize( n=n()) %>% ungroup()
+
+###
+premise_filtered<- premise %>% filter(n,n>=mean(n)) 
+
+
+highest_premise <- premise_filtered %>% group_by(`Premise Code`) %>%
+  summarize(Frequency=n()) %>% ungroup()
+
+descriptions<- FullData %>% dplyr::select(`Premise Code`, `Premise Description`)
+
+highest_premise_description <- left_join(highest_premise,descriptions,by=c("Premise Code"))
+high.descr<-unique(highest_premise_description) 
+
+
+###
+high.descr<-high.descr %>% arrange(desc(Frequency))
+
+
+p_f<- left_join(premise_filtered,tract_lac,by=c("tract"))
+p_f<- p_f %>% dplyr::select(tract, `Premise Code`,n, Latitude,Longitude)
+
+kable(high.descr) %>%
+
+kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),full_width = F,position = "center") 
+
+premise.filtered<- premise_filtered %>% rename(Tract=tract, Count=n)
+
+kable(premise.filtered) %>%
+
+kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),full_width = F,position = "center") %>%scroll_box(width = "700px", height = "350px")
+
+coordinates(p_f)<-~Longitude+Latitude
+proj4string(p_f)<-CRS("+proj=longlat +datum=NAD83")
+p_f<-spTransform(p_f, CRS(proj4string(state)))
+identical(proj4string(p_f),proj4string(state))
+p_f<-data.frame(p_f)
+p_f<-p_f %>% rename(x=Longitude) %>% rename(y=Latitude)
+
+colpalbg<-colorRampPalette(brewer.pal(9,"GnBu"))(100)
+
+colblues<-brewer.pal(3, "Blues") 
+
+ggplot() +geom_path(data=state.df, aes(x=long, y=lat, group=group),  color= 'grey80')+  geom_point(data=p_f, aes(x=x, y=y,color=Premise.Code),size = .6) + coord_fixed(ylim = c(1700000,2000000)) + labs(colour= "Premise Codes", title="Most Frequent Premise Code/Tract", x="Longitude",y="Latitude")
+
+```
+
+
+#Orator: Kirk Swilley
+
+###Q1: Do highly unemployed tracts have a higher prevalence of crime?
+
+```{r, echo = FALSE, warning = FALSE}
+crimesByTract = fulldata %>%
+  group_by(tract) %>%
+  
+  summarise(
+    n=n(),
+    population = (sum(Male.pop+Female.pop)/n),
+    PercentEmployed = (sum(employed)/n)/population,
+    CrimePerPerson = (n/population)) %>%
+  ungroup() %>%
+  arrange(desc(CrimePerPerson))
+  
+CrimesByTractNoZeros<-filter(crimesByTract, population != 0)
+
+kable(CrimesByTractNoZeros) %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),full_width = F,position = "center") %>%  scroll_box(width = "700px", height = "350px")
+
+ggplot(CrimesByTractNoZeros, aes(x =PercentEmployed, y=CrimePerPerson)) +  geom_point(col="#00688B") +ylim(0,.3) + geom_smooth( colour="#6EFF70",method="lm")  +theme(panel.background = element_rect(fill = " dark grey"
+                               )) + ggtitle("Crime Per Person vs Percent Employed") +theme(plot.title = element_text(hjust=0.5))
+
+
+#CvsE = lm(CrimePerPerson~PercentEmployed,data=CrimesByTractNoZeros)
+
+
+#summary(CvsE)
+
+
+```
+
+###Q2: Is there a relationship between renter based housing and crime?
+
+```{r, echo = FALSE, warning=FALSE}
+rented = fulldata %>%
+  group_by(tract) %>%
+  summarise(
+    n=n(),
+    Renterpopulation = (sum(rented.house)/n),
+    population = (sum(Male.pop+Female.pop)/n),
+    CrimePerPerson = (n/population),
+    PercentRenting = round(Renterpopulation/population,4)) %>%
+    #CrimePerPerson = sum(n)/(FullData$`Female pop`+FullData$`Male pop`))
+    
+  ungroup() %>%
+  arrange(desc(CrimePerPerson))
+  
+RentNoZeroPop<-filter(rented, population != 0)
+
+kable(RentNoZeroPop) %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),full_width = F,position = "center") %>%   scroll_box(width = "700px", height = "350px")
+
+ggplot(RentNoZeroPop, aes(x =PercentRenting, y=CrimePerPerson)) +  geom_point(col="#00688B") +ylim(0,.3) + geom_smooth( colour="#6EFF70",method="lm")  +theme(panel.background = element_rect(fill = " dark grey"
+                               )) + ggtitle("Crime Per Person vs Percent Renting") +theme(plot.title = element_text(hjust=0.5))
+
+
+#CvsR = lm(CrimePerPerson~PercentRenting,data=RentNoZeroPop)
+
+#summary(CvsR)
+
+```
+
+#Deliverer: Neha Korrapati
+
+###Q1: Is there a correlation between poverty level and crime?
+
+```{r, echo = FALSE, warning = FALSE}
+cens<-census[,-1]
+fulldata<-FullData[,-1]
+work<-fulldata[,c(1,4)]
+
+
+work<-work %>%
+  group_by(`tract`) %>%
+  summarize(
+    count = n()
+  ) %>%
+ungroup()
+cen<-cens[,c(1,2,3,5)]
+cen$pop = cen$`Male pop`+cen$`Female pop`
+cen<-na.omit(cen)
+joined<-right_join(cen, work, by='tract')
+joined<-joined[,-c(2,3)]
+joined$crimesper = (joined$count/joined$pop)
+joined<- na.omit(joined)
+
+ ggplot(joined, aes(x=medincome, y = crimesper))+geom_point(color = '#1aa3ff')+ geom_smooth(method = "lm", se = F, color = "#000000")+   
+  ggtitle("Crimes per Person v Median Income")+
+  xlab("Median Income")+ylab("Crimes per Person")+
+  theme(plot.title = element_text(hjust=0.5))+theme(panel.background = element_rect(fill = "#cccccc",
+                                colour = "white",
+                                size = 0.5, linetype = "solid"))
+
+
+```
+
+###Q2: Is there a relationship between income and educational level?
+
+```{r, echo = FALSE, warning=FALSE}
+census2<-census[,-1]
+working<-census2[,c(1, 2, 3, 5, 6, 7, 8, 9, 10)]
+working$pop = working$`Male pop` + working$`Female pop`
+working<- working[,-c(2,3)]
+working$percentpostgrad = ((working$`Graduate/Prof degree`)/working$pop)*100
+working$percentcollege =((working$Bachelors)/working$pop)*100
+working$percenths = ((working$`HS equiv`)/working$pop)*100
+working$percentnohs =((working$`No HS`)/working$pop)*100
+working<- na.omit(working)
+working<-working[,-c(3,4,5,6,7)]
+names(working) <- c("Tract", "Median Income", "Population", "Post Grad", "College", "High School", "No High School")
+
+
+test<- working %>%
+  gather(key = "edupercentage", value  = "percent", "Post Grad", "College", "High School", "No High School")
+
+
+ggplot(test, aes(x=`Median Income`, y=percent ))+
+  geom_point(aes(color = `Median Income`))+
+  scale_colour_gradientn(colours = colpalbg)+
+  facet_wrap(~edupercentage) + ggtitle("Educational attainment v Median Income")+
+  xlab("Median income")+ylab("Percent Population")+
+  theme(plot.title = element_text(hjust=0.5))+theme(panel.background = element_rect(fill = "dark grey",
+                                colour = "white",
+                                size = 0.5, linetype = "solid"))
+
+    
+           
+
+```
+
+# Follow-up Questions
+
+### New Questions Based Off Initial Investigation
+
+- Q1: Does the amount of crime change over the course of a year?
+- Q2: Further investigate crime codes 901 and 902.
+- Q3: Prevalence of gun violence. 
+- Q4: Can we predict the median income of a tract based on eduction and crime rate?
+
+### Investigation of Follow-up Questions
+
+Our group decided to follow up on questions 2 and 3.
+
+## Tables on Restraining Order
+
+```{r, echo = FALSE, warning=FALSE}
+##
+restrain <- FullData %>%
+  
+  filter(FullData$`Crime Code` %in% c("901","902") )
+
+grouped = restrain %>%
+  
+  group_by(`Premise Description`) %>%
+  
+  summarise(n=n()) %>%
+  
+  ungroup() %>%
+  
+  arrange(desc(n))
+
+
+
+kable(grouped) %>%
+  
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),full_width = F,position = "center") %>%  scroll_box(width = "400px", height = "350px")
+
+##
+grouped4 = restrain %>%
+
+ group_by(`Victim Sex`,`Victim Age`) %>%
+
+ summarise(n=n()) %>%
+
+ ungroup() %>%
+
+ arrange(desc(n))
+
+
+ggplot(grouped4, aes(x=`Victim Age`))+ geom_histogram(color="white", fill="#00688B",bins=20) +theme(panel.background = element_rect(fill = " dark grey")) + ggtitle("Count of Restraining Order Violations by Victim Age") +theme(plot.title = element_text(hjust=0.5)) + xlab("Victim Age") + ylab("Count of Violations"
+
+ )
+
+##
+thiing <- setDT(grouped4)[`Victim Age` >19 & `Victim Age` <30, Age_Group := "20-29"][`Victim Age` >29 & `Victim Age` <40, Age_Group := "30-39"][`Victim Age` >39 & `Victim Age` <50, Age_Group := "40-49"][`Victim Age` >49 & `Victim Age` <60, Age_Group := "50-59"][`Victim Age` >59 & `Victim Age` <70, Age_Group := "60-69"][`Victim Age` >69 & `Victim Age` <80, Age_Group := "70-79"][`Victim Age` >79 & `Victim Age` <90, Age_Group := "80-89"][`Victim Age` >89 & `Victim Age` <100, Age_Group := "90-99"][`Victim Age` >9 & `Victim Age` <20, Age_Group := "10-19"][`Victim Age` >=0 & `Victim Age` <10, Age_Group := "0-9"]
+
+##
+thiiing <- thiing %>%
+
+ group_by(`Age_Group`,`Victim Sex`) %>%
+
+ summarise(Number=n()) %>%
+
+ ungroup()
+
+kable(thiiing) %>%
+
+ kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),full_width = F,position = "center") %>%  scroll_box(width = "300px", height = "350px")
+
+grouped =  restrain %>%
+
+ group_by(`Victim Sex`) %>%
+
+ summarise(n=n()) %>%
+
+ ungroup() %>%
+
+ arrange(desc(n))
+
+kable(grouped) %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),full_width = F,position = "left") 
+```
+
+## Tables on Gun Violence Prevalance Throughout LA
+```{r, echo = FALSE, warning=FALSE}
+
+  
+weapon_type<- FullData %>% group_by(tract, `Weapon Used Code`) %>% drop_na('Weapon Used Code')  %>% summarize( n=n()) %>% ungroup()
+
+###
+gun_filtered<- weapon_type %>% filter(`Weapon Used Code` %in% c(101,114,102,104,113,108)) 
+
+diff_gun <- FullData %>% filter(`Weapon Used Code` %in% c(101,114,102,104,113,108))
+
+weapon.desc<- FullData %>% drop_na('Weapon Used Code')  %>% dplyr::select(`Weapon Used Code`, `Weapon Description`) 
+
+
+tract_la$Tract<-gsub("[^0-9\\.]", "", tract_la$Tract) 
+tract_lac<-data.frame(tract_la, tract = as.numeric(tract_la$Tract))
+
+
+weapon_f<- left_join(gun_filtered,tract_lac,by=c("tract"))
+weapon_f1<- left_join(weapon_f,weapon.desc,by=c("Weapon Used Code"))
+clean<-unique(weapon_f1) 
+weapon_f<- clean %>% dplyr::select(tract, `Weapon Used Code`,n, Latitude,Longitude, `Weapon Description`)
+
+
+
+kable(weapon_f) %>%
+
+kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),full_width = F,position = "center") %>%  scroll_box(width = "300px", height = "350px")
+
+
+
+#weapon.type.filtered<- weapon_type_filtered %>% rename(Tract=tract, Count=n)
+coordinates(diff_gun)<-~Lon+Lat
+proj4string(diff_gun)<-CRS("+proj=longlat +datum=NAD83")
+diff_gun<-spTransform(diff_gun, CRS(proj4string(state)))
+#identical(proj4string(diff_gun),proj4string(state))
+diff_gun<-data.frame(diff_gun)
+diff_gun<-diff_gun %>% rename(x=Lon) %>% rename(y=Lat)
+
+coordinates(weapon_f)<-~Longitude+Latitude
+proj4string(weapon_f)<-CRS("+proj=longlat +datum=NAD83")
+weapon_f<-spTransform(weapon_f, CRS(proj4string(state)))
+identical(proj4string(weapon_f),proj4string(state))
+weapon_f<-data.frame(weapon_f)
+weapon_f<-weapon_f %>% rename(x=Longitude) %>% rename(y=Latitude) 
+
+
+ggplot() +geom_path(data=state.df, aes(x=long, y=lat, group=group),  color= 'grey80')+  geom_point(data=diff_gun, aes(x=x, y=y,color=Weapon.Description),alpha=0.3) + coord_fixed(ylim = c(1700000,2000000)) + labs(colour= "Weapon Description", title="All Gun Violence Plotted", x="Longitude",y="Latitude")
+
+ggplot() +geom_path(data=state.df, aes(x=long, y=lat, group=group),  color= 'grey80')+  geom_point(data=weapon_f, aes(x=x, y=y,color=Weapon.Description)) + coord_fixed(ylim = c(1700000,2000000)) + labs(colour= "Weapon Description", title="Gun Violence Plotted/Tract", x="Longitude",y="Latitude")
+```
+
+```{r}
+ggmap(ggmap = get_map("la county", zoom = 10, scale="auto", maptype = "roadmap", source = "google")) + geom_point(aes(x=Lon, y = Lat, color=factor(`Weapon Description`)),data=diff_gun, alpha = .5) + scale_x_continuous(limits = c(-118.5, -118.1), expand = c(0, 0)) +
+scale_y_continuous(limits = c(33.9, 34.1), expand = c(0, 0))
+
+
+ggmap(ggmap = get_map("la county", zoom = 10, scale="auto", maptype = "roadmap", source = "google")) + geom_point(aes(x=Lon, y = Lat, color=factor(`Weapon Description`)),data=diff_gun, alpha = .5) + scale_x_continuous(limits = c(-118.7, -118.3), expand = c(0, 0)) +
+scale_y_continuous(limits = c(34.1, 34.3), expand = c(0, 0))
+```
+
+```{r,eval=F}
+
+
+crime=la.crime %>% dplyr::select(-c(1,3,15))
+crime=dplyr::filter(crime, `Victim Sex` == "M" | `Victim Sex`=="F")
+crime=dplyr::select(crime,-c('Weapon Used Code'))
+crime$'Victim Sex'=ifelse(crime$'Victim Sex'=="M",1,0)
+crime= na.omit(crime)
+crime <- crime %>%
+  dplyr::select('Victim Sex', everything())
+crime=crime %>% mutate_if(is.character,as.factor)
+str(crime)
+x=model.matrix(~., crime)
+```
+
+#10 alpha levels cross validated. 
+```{r}
+set.seed(69)
+cvmod.0=cv.glmnet(y=y,x=as.matrix(X),alpha=0)
+set.seed(69)
+cvmod.10=cv.glmnet(y=y,x=as.matrix(X),alpha=0.1)
+set.seed(69)
+cvmod.2=cv.glmnet(y=y,x=as.matrix(X),alpha=0.2)
+set.seed(69)
+cvmod.3=cv.glmnet(y=y,x=as.matrix(X),alpha=0.3)
+set.seed(69)
+cvmod.4=cv.glmnet(y=y,x=as.matrix(X),alpha=.4)
+set.seed(69)
+cvmod.5=cv.glmnet(y=y,x=as.matrix(X),alpha=.5)
+set.seed(69)
+cvmod.6=cv.glmnet(y=y,x=as.matrix(X),alpha=.6)
+set.seed(69)
+cvmod.7=cv.glmnet(y=y,x=as.matrix(X),alpha=.7)
+set.seed(69)
+cvmod.8=cv.glmnet(y=y,x=as.matrix(X),alpha=.8)
+set.seed(69)
+cvmod.9=cv.glmnet(y=y,x=as.matrix(X),alpha=.9)
+set.seed(69)
+cvmod.1=cv.glmnet(y=y,x=as.matrix(X),alpha=1)
+```
+
+```{r}
+
+set.seed(216)
+cvmod.0=cv.glmnet(y=as.factor(crime$'Victim Sex'),x=as.matrix(crime[,-1]),alpha=0,
+                  family="binomial",type.measure="class")
+set.seed(216)
+cvmod.25=cv.glmnet(y=as.factor(crime$'Victim Sex'),x=as.matrix(crime[,-6]),alpha=0.25,
+                   family="binomial",type.measure="class")
+set.seed(216)
+cvmod.5=cv.glmnet(y=as.factor(crime$'Victim Sex'),x=as.matrix(crime[,-6]),alpha=0.5,
+                  family="binomial",type.measure="class")
+set.seed(216)
+cvmod.75=cv.glmnet(y=as.factor(crime$'Victim Sex'),x=as.matrix(crime[,-6]),alpha=0.75,
+                   family="binomial",type.measure="class")
+set.seed(216)
+cvmod.1=cv.glmnet(y=as.factor(crime$'Victim Sex'),x=as.matrix(crime[,-6]),alpha=1,
+                  family="binomial",type.measure="class")
+
+CV.0.ERROR=cvmod.0$cvm[which(cvmod.0$lambda==cvmod.0$lambda.1se)]
+CV.25.ERROR=cvmod.25$cvm[which(cvmod.25$lambda==cvmod.25$lambda.1se)]
+CV.5.ERROR=cvmod.5$cvm[which(cvmod.5$lambda==cvmod.5$lambda.1se)]
+CV.75.ERROR=cvmod.75$cvm[which(cvmod.75$lambda==cvmod.75$lambda.1se)]
+CV.1.ERROR=cvmod.1$cvm[which(cvmod.1$lambda==cvmod.1$lambda.1se)]
+
+MOD.RESULT=tibble(alpha=c(0,0.25,0.5,0.75,1),
+                  lambda=c(cvmod.0$lambda.1se,cvmod.25$lambda.1se,
+                           cvmod.5$lambda.1se,cvmod.75$lambda.1se,
+                           cvmod.1$lambda.1se),
+                  CV.Error=c(CV.0.ERROR,CV.25.ERROR,CV.5.ERROR,
+                             CV.75.ERROR,CV.1.ERROR))
+print(MOD.RESULT)
+```
+
+#lets get our error minimized
+```{r}
+
+CV.0.ERROR=cvmod.0$cvm[which(cvmod.0$lambda==cvmod.0$lambda.1se)]
+CV.10.ERROR=cvmod.10$cvm[which(cvmod.10$lambda==cvmod.10$lambda.1se)]
+CV.2.ERROR=cvmod.2$cvm[which(cvmod.2$lambda==cvmod.2$lambda.1se)]
+CV.3.ERROR=cvmod.3$cvm[which(cvmod.3$lambda==cvmod.3$lambda.1se)]
+CV.4.ERROR=cvmod.4$cvm[which(cvmod.4$lambda==cvmod.4$lambda.1se)]
+CV.5.ERROR=cvmod.5$cvm[which(cvmod.5$lambda==cvmod.5$lambda.1se)]
+CV.6.ERROR=cvmod.6$cvm[which(cvmod.6$lambda==cvmod.6$lambda.1se)]
+CV.7.ERROR=cvmod.7$cvm[which(cvmod.7$lambda==cvmod.7$lambda.1se)]
+CV.8.ERROR=cvmod.8$cvm[which(cvmod.8$lambda==cvmod.8$lambda.1se)]
+CV.9.ERROR=cvmod.9$cvm[which(cvmod.9$lambda==cvmod.9$lambda.1se)]
+CV.1.ERROR=cvmod.1$cvm[which(cvmod.1$lambda==cvmod.1$lambda.1se)]
+MOD.RESULT=tibble(alpha=c(0,0.10,0.2,0.3,0.4,0.5,0.6,0.7,.8,.9,1),
+                  lambda=c(cvmod.0$lambda.1se,cvmod.10$lambda.1se,cvmod.2$lambda.1se,
+                           cvmod.3$lambda.1se,cvmod.4$lambda.1se,cvmod.5$lambda.1se,cvmod.6$lambda.1se,cvmod.7$lambda.1se,
+                           cvmod.8$lambda.1se,cvmod.9$lambda.1se,cvmod.1$lambda.1se),
+                  CV.Error=c(CV.0.ERROR,CV.10.ERROR,CV.2.ERROR,CV.3.ERROR,CV.4.ERROR,CV.5.ERROR,CV.6.ERROR,
+                             CV.7.ERROR,CV.8.ERROR,CV.9.ERROR,CV.1.ERROR))
+head(MOD.RESULT,11)
+
+```
+
+
+
+```{r}
+best.alpha=MOD.RESULT$alpha[which.min(MOD.RESULT$CV.Error)]
+best.lambda=MOD.RESULT$lambda[which.min(MOD.RESULT$CV.Error)]
+
+best.mod=glmnet(y=y,x=as.matrix(X),nlambda=1,lambda=best.lambda,alpha=best.alpha)
+best.coef=as.tibble(as.matrix(coef(best.mod)))
+best.coef2=best.coef %>% 
+              mutate(Parameter=c("Int",var.names)) %>%
+              rename(Estimate=s0) %>%
+              select(Parameter,Estimate)
+nonzero.best.coef=best.coef2 %>%
+                    filter(Estimate!=0)
+print(nonzero.best.coef,n=1e3)
+
+DATA2$hwy.hat=predict(best.mod,newx=as.matrix(X))
+
+ggplot(DATA2) +
+  geom_point(aes(x=hwy,y=hwy.hat),color="lightskyblue2") +
+  geom_abline(a=0,b=1,linetype="dashed") +
+  theme_minimal() +
+  ylab("Predicted Highway MPG") +
+  xlab("Actual Highway MPG")
+
+ggplot(DATA2) +
+  geom_histogram(aes(x=hwy-hwy.hat),fill="lightskyblue2") +
+  theme_minimal() +
+  xlab("Residuals") +
+  ylab("Frequency")
+
+```
+
+
+#Summary
+
+
+While investigating our initial questions, we learned that the majority of crimes occurred in residences, streets, or parking lots. The majority of crimes committed and weapons used in residential areas were similar. When looking at the relationship between the percent of renters and the amount of crime, there was a slight positive relationship, meaning that as the percent of renters increased, the amount of crime increased. There was also a slightly positive relationship between the percent employment and the number of crimes per person. Another relationship we looked at was the rate of crime and the income of the census tract. As the median income of the tract increased, the crime rate decreased. When the education level of a tract was plotted against the income, the figures showed that the higher the percentage of post high school education, the higher the median income generally is. When education level and crime rate were compared, the lower the education level, the higher the crime rate tended to be. Lastly, we looked at the distribution of crimes over the year. The majority of crimes occurred in the fall and early winter.
+
+Follow-up Restraining orders:
+
+Through our follow-up question of exploring the specific crime codes related to restraining orders, we found that the distribution of victims was heavily skewed towards women. Out of the 426 instances of restraining orders being violated,  306 of the victims were women. We also found that restraining orders were typically violated in domestic areas such as apartments and homes. 
+
+Follow-up Gun Stuff:
+Gun violence occurrences was not anything extremely conclusive, as most of the hand gun occurrences were clustered in the inner cities of Los Angeles, where most of the crimes should occur. There are so many data points, so we may apply some smoothing or replotting to determine if we can observe any other patterns.
+
+
+
+
+
+
+
+

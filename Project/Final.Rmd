@@ -1,0 +1,245 @@
+---
+title: "Project"
+author: "Zachary Guan"
+date: "March 14, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)    #Essential Functions
+library(modelr)       #Helpful Functions in Modeling
+library(rvest)
+library(readr)
+library(maptools)
+library(rgdal)
+library(raster)
+library(RColorBrewer) 
+library(knitr)
+#library(kable)
+library(kableExtra)
+library(dplyr)
+library(stringr)
+
+FullData <- read_csv("./FullData.csv")
+tract_la<- read_csv("./tract_la.csv")
+
+#Crime_Data<- read_csv("STOR 320 R Projects/Project/Crime_Data.csv")
+```
+
+
+```{r, eval=F, echo=F}
+#save.image()
+cleaning<-Crime_Data %>% filter(str_detect(Crime_Data$'Date Occurred', "2017"))
+
+cleaning.final <- cleaning%>% dplyr::select('Victim Descent', 'Location')
+
+poo<- cleaning.final %>%
+  str_split_fixed('Location', ", ", n=2)
+
+head(poo)
+head(cleaning.final)
+```
+
+##Loading Shape File
+
+
+```{r eval=T , echo=F}
+
+state<- readOGR(dsn="/Users/zguan/OneDrive/Documents/STOR 320 R Projects/shapefile" , layer="CENSUS_TRACTS_2010")
+
+
+  #state@data$id = rownames(state@data)
+  state.df = fortify(state)
+  #state.df = join(state.points, state@data, by="id")
+#points_in_shape <- over(state, coord)
+#nan<- points_in_shape filter
+```
+
+
+```{r, eval=F, echo=F}
+
+my_data <- read.delim("/Users/zguan/OneDrive/Documents/STOR 320 R Projects/zipcodes/zipcode.txt")
+
+data_cleaned <- data.frame(lapply(my_data, as.character), stringsAsFactors=FALSE)
+
+new_data<-separate(data_cleaned, "ZIP.LAT.LNG",c('ZIP','LAT','LONG'),sep=",") 
+data.v1<-sapply( new_data[,c(1,2,3)],as.numeric)
+thing<-as.data.frame(data.v1)
+poo<-thing %>% filter(ZIP %in% (90000:92000)) 
+poo.v1<- poo %>% dplyr::select(LAT,LONG)
+coord_filter<- cleaning_final1 %>%dplyr::select(Lat,Lon)
+
+
+```
+
+
+
+```{r, eval=F, echo=F}
+
+#length(cleaning_final1$ZIP)
+cleaning_final1$ZIP=NA
+for(i in 1:length(cleaning_final1$ZIP)) {
+  thingy<-as.numeric(coord_filter[i,])
+  small=which.min(diag(t(thingy-t(poo.v1[,c(1,2)])) %*% (thingy-t(poo.v1[,c(1,2)]))))
+  
+  
+  # subtrct=thingy-poo.v1[,1:2]
+  # subtrct<- sweep(poo.v1[,1:2],2,thingy)
+  # transpose<-t(subtrct)
+  # butt<-as.matrix(subtrct) %*% as.matrix(transpose)
+  # stor<-which(butt == min(butt), arr.ind = TRUE)
+  
+  value<-poo[small,1]
+  cleaning_final1$ZIP[i]=value
+  
+}
+```
+
+
+```{r, eval=F, echo=F}
+cleaned.coords <- tract_la %>% dplyr::select(Latitude, Longitude)
+crime.codes<- cleaning_final1 %>%dplyr::select(Lat,Lon)
+just_tract_name <- tract_la %>% dplyr::select(Tract)
+```
+
+
+```{r, eval=F, echo=F}
+cleaning_final1$Tract=NA
+for(i in 32200:length(cleaning_final1$Tract)) {
+  
+  crime_loctn <- as.numeric(crime.codes[i,])
+  closest.loctn <- which.min(diag(t(crime_loctn - t(cleaned.coords[,c(1,2)])) %*% (crime_loctn - t(cleaned.coords[,c(1,2)]))))
+  
+  coord.value<-just_tract_name[closest.loctn,1]
+  cleaning_final1$Tract[i]=coord.value
+}
+#
+
+cleaning_final1 <- unnest(cleaning_final1, Tract)
+
+```
+
+## Weapon Type Table
+```{r eval=T, echo =F}
+
+weapon_type<- FullData %>% group_by(tract, `Weapon Used Code`) %>% drop_na('Weapon Used Code')  %>% summarize( n=n()
+         # mean=mean(Salary,na.rm=TRUE),
+         # sd=sd(Salary,na.rm=TRUE),
+         # prop70= mean(Salary >=70000, na.rm=TRUE)
+         ) %>% ungroup()
+mean(weapon_type$n)
+
+###
+weapon_type_filtered<- weapon_type %>% filter(n,n>=mean(n)) 
+
+
+
+w.desc<- FullData %>% drop_na('Weapon Used Code')  %>% dplyr::select(`Weapon Used Code`, `Weapon Description`) 
+
+highest_weapons <- weapon_type_filtered %>% group_by(`Weapon Used Code`) %>%
+  summarize(Frequency=n()) %>% ungroup()
+
+highest_weapon_description <- left_join(highest_weapons,w.desc,by=c("Weapon Used Code"))
+high.w.descr<-unique(highest_weapon_description)
+
+###
+high.w.descr<-high.w.descr %>% arrange(desc(Frequency))
+
+
+tract_la$Tract<-gsub("[^0-9\\.]", "", tract_la$Tract) 
+tract_lac<-data.frame(tract_la, tract = as.numeric(tract_la$Tract))
+
+
+w_f<- left_join(weapon_type_filtered,tract_lac,by=c("tract"))
+w_f<- w_f %>% dplyr::select(tract, `Weapon Used Code`,n, Latitude,Longitude)
+
+```
+
+
+#Pretty Weapons Table
+```{r , eval=T, echo=F}
+kable(high.w.descr) %>%
+
+kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),full_width = F,position = "center") 
+
+
+weapon.type.filtered<- weapon_type_filtered %>% rename(Tract=tract, Count=n)
+
+kable(weapon.type.filtered) %>%
+
+kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),full_width = F,position = "center") %>%scroll_box(width = "700px", height = "350px")
+
+```
+
+
+#Weapon Plots
+```{r ,eval=T , echo=F}
+coordinates(w_f)<-~Longitude+Latitude
+proj4string(w_f)<-CRS("+proj=longlat +datum=NAD83")
+w_f<-spTransform(w_f, CRS(proj4string(state)))
+identical(proj4string(w_f),proj4string(state))
+w_f<-data.frame(w_f)
+w_f<-w_f %>% rename(x=Longitude) %>% rename(y=Latitude)
+
+ggplot() +geom_path(data=state.df, aes(x=long, y=lat, group=group),  color= 'grey80')+  geom_point(data=w_f, aes(x=x, y=y,color=Weapon.Used.Code),size = .6) + coord_fixed(ylim = c(1700000,2000000)) + labs(colour= "Weapon Used Codes", title="Most Frequent Weapon Code/Tract", x="Longitude",y="Latitude")
+
+
+```
+
+##Premise Code Description 
+```{r ,eval=T , echo=F}
+
+premise<- FullData %>% group_by(tract, `Premise Code`) %>% drop_na(`Premise Code`)  %>% summarize( n=n()) %>% ungroup()
+
+###
+premise_filtered<- premise %>% filter(n,n>=mean(n)) 
+
+
+highest_premise <- premise_filtered %>% group_by(`Premise Code`) %>%
+  summarize(Frequency=n()) %>% ungroup()
+
+descriptions<- FullData %>% dplyr::select(`Premise Code`, `Premise Description`)
+
+highest_premise_description <- left_join(highest_premise,descriptions,by=c("Premise Code"))
+high.descr<-unique(highest_premise_description) 
+
+
+###
+high.descr<-high.descr %>% arrange(desc(Frequency))
+
+
+p_f<- left_join(premise_filtered,tract_lac,by=c("tract"))
+p_f<- p_f %>% dplyr::select(tract, `Premise Code`,n, Latitude,Longitude)
+```
+
+#Pretty Premise Table
+```{r ,eval=T , echo=F}
+kable(high.descr) %>%
+
+kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),full_width = F,position = "center") 
+
+premise.filtered<- premise_filtered %>% rename(Tract=tract, Count=n)
+
+kable(premise.filtered) %>%
+
+kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),full_width = F,position = "center") %>%scroll_box(width = "700px", height = "350px")
+```
+
+#Premise Plot
+```{r ,eval=T , echo=F}
+coordinates(p_f)<-~Longitude+Latitude
+proj4string(p_f)<-CRS("+proj=longlat +datum=NAD83")
+p_f<-spTransform(p_f, CRS(proj4string(state)))
+identical(proj4string(p_f),proj4string(state))
+p_f<-data.frame(p_f)
+p_f<-p_f %>% rename(x=Longitude) %>% rename(y=Latitude)
+
+colpalbg<-colorRampPalette(brewer.pal(9,"GnBu"))(100)
+
+colblues<-brewer.pal(3, "Blues") 
+
+ggplot() +geom_path(data=state.df, aes(x=long, y=lat, group=group),  color= 'grey80')+  geom_point(data=p_f, aes(x=x, y=y,color=Premise.Code),size = .6) + coord_fixed(ylim = c(1700000,2000000)) + labs(colour= "Premise Codes", title="Most Frequent Premise Code/Tract", x="Longitude",y="Latitude")
+
+```
